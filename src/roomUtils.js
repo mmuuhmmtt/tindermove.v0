@@ -1,8 +1,8 @@
 export function getUserId() {
-  let userId = localStorage.getItem('swipemovie_userId')
+  let userId = sessionStorage.getItem('swipemovie_userId')
   if (!userId) {
-    userId = Math.random().toString(36).substring(2, 10)
-    localStorage.setItem('swipemovie_userId', userId)
+    userId = 'usr_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36).substring(4)
+    sessionStorage.setItem('swipemovie_userId', userId)
   }
   return userId
 }

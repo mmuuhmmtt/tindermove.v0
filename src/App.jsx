@@ -72,13 +72,16 @@ function App() {
   useEffect(() => {
     if (!roomCode || screen !== 'active' || roomMode !== 'couple') return
 
-    const selectionsRef = collection(db, 'rooms', roomCode, 'coupleSelections')
+    const normalizedRoomCode = roomCode.toUpperCase().trim()
+    const selectionsRef = collection(db, 'rooms', normalizedRoomCode, 'coupleSelections')
     const unsubscribe = onSnapshot(selectionsRef, (snapshot) => {
       const docs = []
-      snapshot.forEach((docSnap) => docs.push(docSnap.data()))
+      snapshot.forEach((docSnap) => {
+        docs.push({ id: docSnap.id, ...docSnap.data() })
+      })
       setCoupleDocs(docs)
 
-      const myDoc = docs.find((d) => d.userId === userId)
+      const myDoc = docs.find((d) => (d.userId || d.id) === userId)
       if (myDoc && Array.isArray(myDoc.selections)) {
         setCoupleSelections(myDoc.selections)
       }
@@ -87,7 +90,7 @@ function App() {
       if (readyDocs.length >= 2) {
         setShowCoupleModal(true)
       }
-    })
+    }, (err) => console.error('CoupleSelections onSnapshot hatası:', err))
 
     return () => unsubscribe()
   }, [roomCode, screen, roomMode, userId])
@@ -209,6 +212,7 @@ function App() {
       })
 
       if (roomCode && roomMode === 'couple') {
+        const normalizedRoomCode = roomCode.toUpperCase().trim()
         if (coupleSelections.length < 3) {
           const cleanMovie = sanitizeMovie(currentMovie)
           const updatedSelections = [...coupleSelections, cleanMovie]
@@ -218,12 +222,12 @@ function App() {
           const userAvatar = localStorage.getItem('swipemovie_userAvatar') || '🍿'
           const displayName = `${userAvatar} ${userName}`
 
-          const selectionDocRef = doc(db, 'rooms', roomCode, 'coupleSelections', userId)
+          const selectionDocRef = doc(db, 'rooms', normalizedRoomCode, 'coupleSelections', userId)
           setDoc(selectionDocRef, {
             userId,
             userName: displayName,
             selections: updatedSelections,
-            updatedAt: new Date()
+            updatedAt: Date.now()
           }).catch((err) => console.error('Çift modu veri kaydetme hatası:', err))
 
           if (updatedSelections.length === 3) {
@@ -557,7 +561,7 @@ function App() {
         isOpen={showCoupleModal}
         onClose={() => setShowCoupleModal(false)}
         mySelections={coupleSelections}
-        partnerDoc={coupleDocs.find((d) => d.userId !== userId)}
+        partnerDoc={coupleDocs.find((d) => (d.userId || d.id) !== userId)}
         winningData={roomMode === 'couple' ? getDeterministicWinningMovie(roomCode, coupleDocs) : null}
         onPlayTrailer={handlePlayTrailer}
       />
