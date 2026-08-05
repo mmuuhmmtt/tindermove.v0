@@ -2,6 +2,7 @@ import './App.css'
 import MovieCard from './components/MovieCard'
 import MovieModal from './components/MovieModal'
 import FilterModal from './components/FilterModal'
+import MatchModal from './components/MatchModal'
 import RoomEntry, { JoinRoomScreen } from './components/RoomEntry'
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -69,6 +70,8 @@ function App() {
     localStorage.setItem('likedMovies', JSON.stringify(likedMovies))
   }, [likedMovies])
 
+  const [newMatchMovie, setNewMatchMovie] = useState(null)
+
   useEffect(() => {
     if (!roomCode || screen !== 'active') return
 
@@ -90,7 +93,16 @@ function App() {
         (entry) => entry.users.length >= 2
       )
 
-      setMatches(foundMatches.map((m) => m.movie))
+      const foundMatchesList = foundMatches.map((m) => m.movie)
+
+      setMatches((prevMatches) => {
+        const prevIds = new Set(prevMatches.map((m) => m.id))
+        const brandNew = foundMatchesList.find((m) => !prevIds.has(m.id))
+        if (brandNew) {
+          setNewMatchMovie(brandNew)
+        }
+        return foundMatchesList
+      })
     })
 
     return () => unsubscribe()
@@ -361,6 +373,11 @@ function App() {
         onApply={setFilters}
         onClose={() => setShowFilters(false)}
         isOpen={showFilters}
+      />
+
+      <MatchModal
+        matchMovie={newMatchMovie}
+        onClose={() => setNewMatchMovie(null)}
       />
     </div>
   )
