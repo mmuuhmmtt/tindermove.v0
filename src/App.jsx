@@ -108,7 +108,7 @@ function App() {
 
   // Film çekme — filtrelere göre discover endpoint'i kullanıyoruz
   useEffect(() => {
-    const apiKey = import.meta.env.VITE_TMDB_API_KEY
+    const apiKey = import.meta.env.VITE_TMDB_API_KEY || '164bcd014a73abb83232a29f536ee142'
     let url = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&language=tr-TR&page=${page}&sort_by=popularity.desc`
 
     if (filters.genre) {

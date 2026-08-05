@@ -36,12 +36,19 @@ export function sanitizeMovie(movie) {
 export function getCleanRoomUrl(roomCode, roomMode) {
   let baseUrl = 'https://tindermove-v0.vercel.app'
 
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname
+    if (host === 'localhost' || host === '127.0.0.1') {
+      baseUrl = window.location.origin
+    }
+  }
+
   const modeSuffix = roomMode === 'couple' ? '&mode=couple' : ''
   return `${baseUrl}/?room=${roomCode}${modeSuffix}`
 }
 
 export async function getMovieTrailerKey(movieId) {
-  const apiKey = import.meta.env.VITE_TMDB_API_KEY
+  const apiKey = import.meta.env.VITE_TMDB_API_KEY || '164bcd014a73abb83232a29f536ee142'
   try {
     let res = await fetch(`https://api.themoviedb.org/3/movie/${movieId}/videos?api_key=${apiKey}&language=tr-TR`)
     let data = await res.json()
