@@ -3,11 +3,15 @@ import MovieCard from './components/MovieCard'
 import MovieModal from './components/MovieModal'
 import FilterModal from './components/FilterModal'
 import MatchModal from './components/MatchModal'
+import TrailerModal from './components/TrailerModal'
+import QuickMoods from './components/QuickMoods'
+import CompatibilityModal from './components/CompatibilityModal'
+import SpinWheelModal from './components/SpinWheelModal'
 import RoomEntry, { JoinRoomScreen } from './components/RoomEntry'
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { db } from './firebase'
-import { getUserId, getRoomFromUrl } from './roomUtils'
+import { getUserId, getRoomFromUrl, getCleanRoomUrl, getMovieTrailerKey } from './roomUtils'
 import { collection, doc, setDoc, onSnapshot, query, where } from 'firebase/firestore'
 
 function App() {
@@ -17,17 +21,27 @@ function App() {
   const [page, setPage] = useState(1)
   const [showLiked, setShowLiked] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
-  const [filters, setFilters] = useState({ genre: null, minRating: 0 })
-
-  const [likedMovies, setLikedMovies] = useState(() => {
-    const saved = localStorage.getItem('likedMovies')
-    return saved ? JSON.parse(saved) : []
-  })
-
+  const [showCompat, setShowCompat] = useState(false)
+  const [showWheel, setShowWheel] = useState(false)
+  const [activeTrailer, setActiveTrailer] = useState(null)
+  const [activeMood, setActiveMood] = useState('all')
+  const [filters, setFilters] = useState({ genre: null, minRating: 0, maxRuntime: null })
+  const [newMatchMovie, setNewMatchMovie] = useState(null)
+  const [history, setHistory] = useState([])
+  const [copied, setCopied] = useState(false)
   const [screen, setScreen] = useState('entry')
   const [roomCode, setRoomCode] = useState(null)
   const [matches, setMatches] = useState([])
   const userId = getUserId()
+
+  const [likedMovies, setLikedMovies] = useState(() => {
+    try {
+      const saved = localStorage.getItem('likedMovies')
+      return saved ? JSON.parse(saved) : []
+    } catch {
+      return []
+    }
+  })
 
   useEffect(() => {
     const urlRoom = getRoomFromUrl()
@@ -36,6 +50,20 @@ function App() {
       setScreen('joinPrompt')
     }
   }, [])
+
+  const handlePlayTrailer = async (movie) => {
+    const key = await getMovieTrailerKey(movie.id)
+    if (key) {
+      setActiveTrailer({ key, title: movie.title })
+    } else {
+      alert('Bu film için maalesef fragman bulunamadı.')
+    }
+  }
+
+  const handleSelectMood = (moodId, moodFilters) => {
+    setActiveMood(moodId)
+    setFilters(moodFilters)
+  }
 
   // Film çekme — filtrelere göre discover endpoint'i kullanıyoruz
   useEffect(() => {
@@ -48,11 +76,16 @@ function App() {
     if (filters.minRating > 0) {
       url += `&vote_average.gte=${filters.minRating}&vote_count.gte=50`
     }
+    if (filters.maxRuntime) {
+      url += `&with_runtime.lte=${filters.maxRuntime}`
+    }
 
     fetch(url)
       .then((response) => response.json())
       .then((data) => {
-        setMovies((prevMovies) => (page === 1 ? data.results : [...prevMovies, ...data.results]))
+        if (data && data.results) {
+          setMovies((prevMovies) => (page === 1 ? data.results : [...prevMovies, ...data.results]))
+        }
       })
       .catch((error) => {
         console.error('Film verisi çekilirken hata oluştu:', error)
@@ -70,8 +103,6 @@ function App() {
     localStorage.setItem('likedMovies', JSON.stringify(likedMovies))
   }, [likedMovies])
 
-  const [newMatchMovie, setNewMatchMovie] = useState(null)
-
   useEffect(() => {
     if (!roomCode || screen !== 'active') return
 
@@ -83,21 +114,29 @@ function App() {
 
       snapshot.forEach((docSnap) => {
         const data = docSnap.data()
-        if (!likesByMovie[data.movieId]) {
-          likesByMovie[data.movieId] = { users: [], movie: data.movie }
+        if (data && data.movieId && data.movie) {
+          if (!likesByMovie[data.movieId]) {
+            likesByMovie[data.movieId] = { users: [], userNames: [], movie: data.movie }
+          }
+          likesByMovie[data.movieId].users.push(data.userId)
+          if (data.userName) {
+            likesByMovie[data.movieId].userNames.push(data.userName)
+          }
         }
-        likesByMovie[data.movieId].users.push(data.userId)
       })
 
       const foundMatches = Object.values(likesByMovie).filter(
         (entry) => entry.users.length >= 2
       )
 
-      const foundMatchesList = foundMatches.map((m) => m.movie)
+      const foundMatchesList = foundMatches.map((m) => ({
+        ...m.movie,
+        userNames: m.userNames
+      })).filter((m) => m && m.id)
 
       setMatches((prevMatches) => {
-        const prevIds = new Set(prevMatches.map((m) => m.id))
-        const brandNew = foundMatchesList.find((m) => !prevIds.has(m.id))
+        const prevIds = new Set(prevMatches.map((m) => m ? m.id : null))
+        const brandNew = foundMatchesList.find((m) => m && !prevIds.has(m.id))
         if (brandNew) {
           setNewMatchMovie(brandNew)
         }
@@ -107,8 +146,6 @@ function App() {
 
     return () => unsubscribe()
   }, [roomCode, screen])
-
-  const [history, setHistory] = useState([])
 
   const handleRemoveLiked = (movieId, e) => {
     if (e) e.stopPropagation()
@@ -131,9 +168,11 @@ function App() {
       })
 
       if (roomCode) {
+        const userName = localStorage.getItem('swipemovie_userName') || 'İzleyici'
         const swipeDocRef = doc(db, 'rooms', roomCode, 'swipes', `${userId}_${currentMovie.id}`)
         setDoc(swipeDocRef, {
           userId,
+          userName,
           movieId: currentMovie.id,
           direction: 'right',
           movie: {
@@ -167,10 +206,8 @@ function App() {
     }
   }
 
-  const [copied, setCopied] = useState(false)
-
   const handleCopyLink = () => {
-    const url = window.location.href
+    const url = getCleanRoomUrl(roomCode)
     navigator.clipboard.writeText(url).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
@@ -203,6 +240,11 @@ function App() {
         <h1 className="logo">🔥 SwipeMovie</h1>
       </div>
 
+      <QuickMoods
+        activeMood={activeMood}
+        onSelectMood={handleSelectMood}
+      />
+
       {roomCode && (
         <div className="room-badge">
           <span>🏠 Oda Kodu: <strong>{roomCode}</strong></span>
@@ -221,6 +263,16 @@ function App() {
         <button className="liked-counter" onClick={() => setShowLiked(!showLiked)}>
           {showLiked ? '⬅ Geri Dön' : `❤️ Beğenilen: ${likedMovies.length}`}
         </button>
+
+        <button className="liked-counter wheel-btn-chip" onClick={() => setShowWheel(true)}>
+          🎲 Çarkı Çevir
+        </button>
+
+        {roomCode && (
+          <button className="liked-counter compat-btn-chip" onClick={() => setShowCompat(true)}>
+            🎯 Zevk Uyumu
+          </button>
+        )}
       </div>
 
       {roomCode && matches.length > 0 && (
@@ -277,17 +329,38 @@ function App() {
             style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}
           >
             <div className="card-stack">
+              {movies.length === 0 && (
+                <div className="empty-stack-loader">
+                  <div className="spinner"></div>
+                  <p>🎬 Filmler Yükleniyor...</p>
+                </div>
+              )}
+
               {movies.slice(currentIndex, currentIndex + 2).reverse().map((movie, i, arr) => (
                 <MovieCard
                   key={movie.id}
                   movie={movie}
                   onSwipe={handleSwipe}
                   onCardClick={setSelectedMovie}
+                  onPlayTrailer={handlePlayTrailer}
                   isTop={i === arr.length - 1}
                 />
               ))}
+
               {movies.length > 0 && currentIndex >= movies.length && (
-                <p>Gösterilecek başka film kalmadı 🎉</p>
+                <div className="empty-stack-loader">
+                  <p>🎉 Gösterilecek başka film kalmadı</p>
+                  <button
+                    onClick={() => {
+                      setCurrentIndex(0)
+                      setPage(1)
+                    }}
+                    className="secondary-button"
+                    style={{ marginTop: '12px', width: 'auto', padding: '10px 20px' }}
+                  >
+                    🔄 Baştan Başla
+                  </button>
+                </div>
               )}
             </div>
 
@@ -378,6 +451,27 @@ function App() {
       <MatchModal
         matchMovie={newMatchMovie}
         onClose={() => setNewMatchMovie(null)}
+      />
+
+      <TrailerModal
+        videoKey={activeTrailer?.key}
+        movieTitle={activeTrailer?.title}
+        onClose={() => setActiveTrailer(null)}
+      />
+
+      <CompatibilityModal
+        isOpen={showCompat}
+        onClose={() => setShowCompat(false)}
+        matchesCount={matches.length}
+        totalSwipesCount={history.length}
+        likedMovies={likedMovies}
+      />
+
+      <SpinWheelModal
+        isOpen={showWheel}
+        onClose={() => setShowWheel(false)}
+        movies={likedMovies.length > 0 ? likedMovies : movies}
+        onSelectWinner={(movie) => setSelectedMovie(movie)}
       />
     </div>
   )
