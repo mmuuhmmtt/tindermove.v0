@@ -7,7 +7,8 @@ function RoomEntry({ onJoinSolo }) {
   }
 
   return (
-    <div className="room-entry">
+    <div className="room-entry"> 
+    
       <h1>SwipeMovie 🎬</h1>
       <p>Arkadaşınla ortak film bulun</p>
 
