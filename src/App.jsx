@@ -1,6 +1,7 @@
 import './App.css'
 import MovieCard from './components/MovieCard'
 import MovieModal from './components/MovieModal'
+import FilterModal from './components/FilterModal'
 import RoomEntry, { JoinRoomScreen } from './components/RoomEntry'
 import { useState, useEffect } from 'react'
 import { db } from './firebase'
@@ -13,19 +14,19 @@ function App() {
   const [selectedMovie, setSelectedMovie] = useState(null)
   const [page, setPage] = useState(1)
   const [showLiked, setShowLiked] = useState(false)
+  const [showFilters, setShowFilters] = useState(false)
+  const [filters, setFilters] = useState({ genre: null, minRating: 0 })
 
   const [likedMovies, setLikedMovies] = useState(() => {
     const saved = localStorage.getItem('likedMovies')
     return saved ? JSON.parse(saved) : []
   })
 
-  // Oda yönetimi
-  const [screen, setScreen] = useState('entry') // 'entry' | 'joinPrompt' | 'active'
+  const [screen, setScreen] = useState('entry')
   const [roomCode, setRoomCode] = useState(null)
   const [matches, setMatches] = useState([])
   const userId = getUserId()
 
-  // Sayfa açılışında URL'de oda kodu var mı kontrol et
   useEffect(() => {
     const urlRoom = getRoomFromUrl()
     if (urlRoom) {
@@ -34,26 +35,39 @@ function App() {
     }
   }, [])
 
-  // Film çekme (TMDB)
+  // Film çekme — filtrelere göre discover endpoint'i kullanıyoruz
   useEffect(() => {
     const apiKey = import.meta.env.VITE_TMDB_API_KEY
-    const url = `https://api.themoviedb.org/3/movie/popular?api_key=${apiKey}&language=tr-TR&page=${page}`
+    let url = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&language=tr-TR&page=${page}&sort_by=popularity.desc`
+
+    if (filters.genre) {
+      url += `&with_genres=${filters.genre}`
+    }
+    if (filters.minRating > 0) {
+      url += `&vote_average.gte=${filters.minRating}&vote_count.gte=50`
+    }
 
     fetch(url)
       .then((response) => response.json())
       .then((data) => {
-        setMovies((prevMovies) => [...prevMovies, ...data.results])
+        setMovies((prevMovies) => (page === 1 ? data.results : [...prevMovies, ...data.results]))
       })
       .catch((error) => {
         console.error('Film verisi çekilirken hata oluştu:', error)
       })
-  }, [page])
+  }, [page, filters])
+
+  // Filtre değişince baştan başla
+  useEffect(() => {
+    setCurrentIndex(0)
+    setPage(1)
+    setMovies([])
+  }, [filters])
 
   useEffect(() => {
     localStorage.setItem('likedMovies', JSON.stringify(likedMovies))
   }, [likedMovies])
 
-  // Oda içindeyken Firestore'u gerçek zamanlı dinle (eşleşmeleri bulmak için)
   useEffect(() => {
     if (!roomCode || screen !== 'active') return
 
@@ -87,7 +101,6 @@ function App() {
     if (direction === 'right') {
       setLikedMovies([...likedMovies, currentMovie])
 
-      // Oda modundaysak Firestore'a yaz
       if (roomCode) {
         const swipeDocRef = doc(db, 'rooms', roomCode, 'swipes', `${userId}_${currentMovie.id}`)
         setDoc(swipeDocRef, {
@@ -114,7 +127,6 @@ function App() {
     }
   }
 
-  // Ekran 1: Giriş (Oda Oluştur / Solo)
   if (screen === 'entry') {
     return (
       <RoomEntry
@@ -126,7 +138,6 @@ function App() {
     )
   }
 
-  // Ekran 2: Link ile gelen kullanıcıya katılma onayı
   if (screen === 'joinPrompt') {
     return (
       <JoinRoomScreen
@@ -136,7 +147,6 @@ function App() {
     )
   }
 
-  // Ekran 3: Asıl swipe uygulaması
   return (
     <div className="app">
       <div className="top-bar">
@@ -151,9 +161,14 @@ function App() {
         </p>
       )}
 
-      <button className="liked-counter" onClick={() => setShowLiked(!showLiked)}>
-        {showLiked ? '⬅ Geri Dön' : `❤️ Beğenilen: ${likedMovies.length}`}
-      </button>
+      <div className="top-buttons-row">
+        <button className="liked-counter" onClick={() => setShowLiked(!showLiked)}>
+          {showLiked ? '⬅ Geri Dön' : `❤️ Beğenilen: ${likedMovies.length}`}
+        </button>
+        <button className="liked-counter" onClick={() => setShowFilters(true)}>
+          🎛️ Filtrele
+        </button>
+      </div>
 
       {roomCode && matches.length > 0 && (
         <div className="match-banner">
@@ -180,24 +195,24 @@ function App() {
       ) : (
         <>
           <div className="card-stack">
-          {movies.slice(currentIndex, currentIndex + 2).reverse().map((movie, i, arr) => (
-            <MovieCard
-              key={movie.id}
-              movie={movie}
-              onSwipe={handleSwipe}
-              onCardClick={setSelectedMovie}
-              isTop={i === arr.length - 1}
-            />
-          ))}
-          {movies.length > 0 && currentIndex >= movies.length && (
-            <p>Gösterilecek başka film kalmadı 🎉</p>
+            {movies.slice(currentIndex, currentIndex + 2).reverse().map((movie, i, arr) => (
+              <MovieCard
+                key={movie.id}
+                movie={movie}
+                onSwipe={handleSwipe}
+                onCardClick={setSelectedMovie}
+                isTop={i === arr.length - 1}
+              />
+            ))}
+            {movies.length > 0 && currentIndex >= movies.length && (
+              <p>Gösterilecek başka film kalmadı 🎉</p>
             )}
           </div>
 
-         <div className="buttons">
-          <button onClick={() => handleSwipe('left')} className="icon-button nope-button">✕</button>
-          <button onClick={() => handleSwipe('right')} className="icon-button like-button">♥</button>
-        </div>
+          <div className="buttons">
+            <button onClick={() => handleSwipe('left')} className="icon-button nope-button">✕</button>
+            <button onClick={() => handleSwipe('right')} className="icon-button like-button">♥</button>
+          </div>
         </>
       )}
 
@@ -216,6 +231,14 @@ function App() {
       )}
 
       <MovieModal movie={selectedMovie} onClose={() => setSelectedMovie(null)} />
+
+      {showFilters && (
+        <FilterModal
+          filters={filters}
+          onApply={setFilters}
+          onClose={() => setShowFilters(false)}
+        />
+      )}
     </div>
   )
 }

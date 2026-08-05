@@ -317,3 +317,44 @@ body {
   font-weight: 600;
   cursor: pointer;
 }
+
+.top-buttons-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.filter-label {
+  text-align: left;
+  font-weight: 600;
+  margin: 16px 0 8px;
+  color: #333;
+}
+
+.genre-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.genre-chip {
+  padding: 8px 14px;
+  border-radius: 50px;
+  border: 1.5px solid #ddd;
+  background: white;
+  cursor: pointer;
+  font-size: 13px;
+  color: #555;
+}
+
+.genre-chip.active {
+  background: linear-gradient(135deg, #fd5068, #ff8a65);
+  color: white;
+  border-color: transparent;
+}
+
+.rating-slider {
+  width: 100%;
+  accent-color: #fd5068;
+}
