@@ -4,6 +4,7 @@ import MovieModal from './components/MovieModal'
 import FilterModal from './components/FilterModal'
 import RoomEntry, { JoinRoomScreen } from './components/RoomEntry'
 import { useState, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { db } from './firebase'
 import { getUserId, getRoomFromUrl } from './roomUtils'
 import { collection, doc, setDoc, onSnapshot, query, where } from 'firebase/firestore'
@@ -95,11 +96,27 @@ function App() {
     return () => unsubscribe()
   }, [roomCode, screen])
 
+  const [history, setHistory] = useState([])
+
+  const handleRemoveLiked = (movieId, e) => {
+    if (e) e.stopPropagation()
+    setLikedMovies((prev) => prev.filter((m) => m.id !== movieId))
+    if (selectedMovie && selectedMovie.id === movieId) {
+      setSelectedMovie(null)
+    }
+  }
+
   const handleSwipe = (direction) => {
+    if (currentIndex >= movies.length) return
     const currentMovie = movies[currentIndex]
 
-    if (direction === 'right') {
-      setLikedMovies([...likedMovies, currentMovie])
+    setHistory((prev) => [...prev, { movie: currentMovie, direction, index: currentIndex }])
+
+    if (direction === 'right' || direction === 'super') {
+      setLikedMovies((prev) => {
+        if (prev.some((m) => m.id === currentMovie.id)) return prev
+        return [...prev, currentMovie]
+      })
 
       if (roomCode) {
         const swipeDocRef = doc(db, 'rooms', roomCode, 'swipes', `${userId}_${currentMovie.id}`)
@@ -125,6 +142,27 @@ function App() {
     if (nextIndex >= movies.length - 5) {
       setPage((prevPage) => prevPage + 1)
     }
+  }
+
+  const handleRewind = () => {
+    if (currentIndex > 0 && history.length > 0) {
+      const last = history[history.length - 1]
+      setHistory((prev) => prev.slice(0, -1))
+      setCurrentIndex(last.index)
+      if (last.direction === 'right' || last.direction === 'super') {
+        setLikedMovies((prev) => prev.filter((m) => m.id !== last.movie.id))
+      }
+    }
+  }
+
+  const [copied, setCopied] = useState(false)
+
+  const handleCopyLink = () => {
+    const url = window.location.href
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
   }
 
   if (screen === 'entry') {
@@ -154,19 +192,22 @@ function App() {
       </div>
 
       {roomCode && (
-        <p className="room-badge">
-          🏠 Oda: <strong>{roomCode}</strong> — bu linki arkadaşına gönder:
-          <br />
-          <code>{window.location.href}</code>
-        </p>
+        <div className="room-badge">
+          <span>🏠 Oda Kodu: <strong>{roomCode}</strong></span>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className={`copy-link-btn ${copied ? 'copied' : ''}`}
+            onClick={handleCopyLink}
+          >
+            {copied ? '✅ Link Kopyalandı!' : '📋 Oda Linkini Kopyala'}
+          </motion.button>
+        </div>
       )}
 
       <div className="top-buttons-row">
         <button className="liked-counter" onClick={() => setShowLiked(!showLiked)}>
           {showLiked ? '⬅ Geri Dön' : `❤️ Beğenilen: ${likedMovies.length}`}
-        </button>
-        <button className="liked-counter" onClick={() => setShowFilters(true)}>
-          🎛️ Filtrele
         </button>
       </div>
 
@@ -176,45 +217,123 @@ function App() {
         </div>
       )}
 
-      {showLiked ? (
-        <div className="liked-grid">
-          {likedMovies.length === 0 ? (
-            <p>Henüz beğendiğin film yok.</p>
-          ) : (
-            likedMovies.map((movie) => (
-              <img
-                key={movie.id}
-                src={`https://image.tmdb.org/t/p/w200${movie.poster_path}`}
-                alt={movie.title}
-                className="liked-poster"
-                onClick={() => setSelectedMovie(movie)}
-              />
-            ))
-          )}
-        </div>
-      ) : (
-        <>
-          <div className="card-stack">
-            {movies.slice(currentIndex, currentIndex + 2).reverse().map((movie, i, arr) => (
-              <MovieCard
-                key={movie.id}
-                movie={movie}
-                onSwipe={handleSwipe}
-                onCardClick={setSelectedMovie}
-                isTop={i === arr.length - 1}
-              />
-            ))}
-            {movies.length > 0 && currentIndex >= movies.length && (
-              <p>Gösterilecek başka film kalmadı 🎉</p>
+      <AnimatePresence mode="wait">
+        {showLiked ? (
+          <motion.div
+            key="liked-view"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.2 }}
+            className="liked-grid"
+          >
+            {likedMovies.length === 0 ? (
+              <p className="empty-liked-text">Henüz beğendiğin film yok.</p>
+            ) : (
+              likedMovies.map((movie) => (
+                <motion.div
+                  key={movie.id}
+                  className="liked-item"
+                  initial={{ scale: 0.85, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                >
+                  <button
+                    className="remove-liked-btn"
+                    onClick={(e) => handleRemoveLiked(movie.id, e)}
+                    title="Beğenilerden Kaldır"
+                  >
+                    ✕
+                  </button>
+                  <img
+                    src={`https://image.tmdb.org/t/p/w200${movie.poster_path}`}
+                    alt={movie.title}
+                    className="liked-poster"
+                    onClick={() => setSelectedMovie(movie)}
+                  />
+                </motion.div>
+              ))
             )}
-          </div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="cards-view"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+          >
+            <div className="card-stack">
+              {movies.slice(currentIndex, currentIndex + 2).reverse().map((movie, i, arr) => (
+                <MovieCard
+                  key={movie.id}
+                  movie={movie}
+                  onSwipe={handleSwipe}
+                  onCardClick={setSelectedMovie}
+                  isTop={i === arr.length - 1}
+                />
+              ))}
+              {movies.length > 0 && currentIndex >= movies.length && (
+                <p>Gösterilecek başka film kalmadı 🎉</p>
+              )}
+            </div>
 
-          <div className="buttons">
-            <button onClick={() => handleSwipe('left')} className="icon-button nope-button">✕</button>
-            <button onClick={() => handleSwipe('right')} className="icon-button like-button">♥</button>
-          </div>
-        </>
-      )}
+            <div className="tinder-action-buttons">
+              <motion.button
+                whileHover={{ scale: 1.15 }}
+                whileTap={{ scale: 0.85 }}
+                onClick={handleRewind}
+                className="tinder-btn rewind-btn"
+                title="Geri Al"
+                disabled={currentIndex === 0 || history.length === 0}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                  <path d="M3 3v5h5"/>
+                </svg>
+              </motion.button>
+
+              <motion.button
+                whileHover={{ scale: 1.15 }}
+                whileTap={{ scale: 0.85 }}
+                onClick={() => handleSwipe('left')}
+                className="tinder-btn nope-btn"
+                title="Pas Geç"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </motion.button>
+
+              <motion.button
+                whileHover={{ scale: 1.15 }}
+                whileTap={{ scale: 0.85 }}
+                onClick={() => handleSwipe('right')}
+                className="tinder-btn like-btn"
+                title="Beğen"
+              >
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                </svg>
+              </motion.button>
+
+              <motion.button
+                whileHover={{ scale: 1.15 }}
+                whileTap={{ scale: 0.85 }}
+                onClick={() => setShowFilters(true)}
+                className="tinder-btn boost-btn"
+                title="Filtrele"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+                </svg>
+              </motion.button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {roomCode && matches.length > 0 && (
         <div className="liked-grid">
@@ -230,15 +349,19 @@ function App() {
         </div>
       )}
 
-      <MovieModal movie={selectedMovie} onClose={() => setSelectedMovie(null)} />
+      <MovieModal
+        movie={selectedMovie}
+        onClose={() => setSelectedMovie(null)}
+        onRemoveLiked={handleRemoveLiked}
+        isLiked={selectedMovie ? likedMovies.some((m) => m.id === selectedMovie.id) : false}
+      />
 
-      {showFilters && (
-        <FilterModal
-          filters={filters}
-          onApply={setFilters}
-          onClose={() => setShowFilters(false)}
-        />
-      )}
+      <FilterModal
+        filters={filters}
+        onApply={setFilters}
+        onClose={() => setShowFilters(false)}
+        isOpen={showFilters}
+      />
     </div>
   )
 }
