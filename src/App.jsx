@@ -7,12 +7,13 @@ import TrailerModal from './components/TrailerModal'
 import QuickMoods from './components/QuickMoods'
 import CompatibilityModal from './components/CompatibilityModal'
 import SpinWheelModal from './components/SpinWheelModal'
+import CoupleModeModal from './components/CoupleModeModal'
 import RoomEntry, { JoinRoomScreen } from './components/RoomEntry'
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { db } from './firebase'
-import { getUserId, getRoomFromUrl, getCleanRoomUrl, getMovieTrailerKey } from './roomUtils'
-import { collection, doc, setDoc, onSnapshot, query, where } from 'firebase/firestore'
+import { getUserId, getRoomFromUrl, getCleanRoomUrl, getMovieTrailerKey, getDeterministicWinningMovie, sanitizeMovie } from './roomUtils'
+import { collection, doc, getDoc, setDoc, onSnapshot, query, where } from 'firebase/firestore'
 
 function App() {
   const [movies, setMovies] = useState([])
@@ -23,6 +24,10 @@ function App() {
   const [showFilters, setShowFilters] = useState(false)
   const [showCompat, setShowCompat] = useState(false)
   const [showWheel, setShowWheel] = useState(false)
+  const [showCoupleModal, setShowCoupleModal] = useState(false)
+  const [roomMode, setRoomMode] = useState('normal')
+  const [coupleSelections, setCoupleSelections] = useState([])
+  const [coupleDocs, setCoupleDocs] = useState([])
   const [activeTrailer, setActiveTrailer] = useState(null)
   const [activeMood, setActiveMood] = useState('all')
   const [filters, setFilters] = useState({ genre: null, minRating: 0, maxRuntime: null })
@@ -43,13 +48,49 @@ function App() {
     }
   })
 
+  // URL parametresinden veya Firestore'dan oda modunu yükle
   useEffect(() => {
     const urlRoom = getRoomFromUrl()
+    const params = new URLSearchParams(window.location.search)
+    const modeParam = params.get('mode')
+    if (modeParam) setRoomMode(modeParam)
+
     if (urlRoom) {
       setRoomCode(urlRoom)
       setScreen('joinPrompt')
+
+      const roomRef = doc(db, 'rooms', urlRoom)
+      getDoc(roomRef).then((docSnap) => {
+        if (docSnap.exists() && docSnap.data().mode) {
+          setRoomMode(docSnap.data().mode)
+        }
+      })
     }
   }, [])
+
+  // Çift Modu canlı dinleyici & seçim takibi
+  useEffect(() => {
+    if (!roomCode || screen !== 'active' || roomMode !== 'couple') return
+
+    const selectionsRef = collection(db, 'rooms', roomCode, 'coupleSelections')
+    const unsubscribe = onSnapshot(selectionsRef, (snapshot) => {
+      const docs = []
+      snapshot.forEach((docSnap) => docs.push(docSnap.data()))
+      setCoupleDocs(docs)
+
+      const myDoc = docs.find((d) => d.userId === userId)
+      if (myDoc && Array.isArray(myDoc.selections)) {
+        setCoupleSelections(myDoc.selections)
+      }
+
+      const readyDocs = docs.filter((d) => Array.isArray(d.selections) && d.selections.length >= 3)
+      if (readyDocs.length >= 2) {
+        setShowCoupleModal(true)
+      }
+    })
+
+    return () => unsubscribe()
+  }, [roomCode, screen, roomMode, userId])
 
   const handlePlayTrailer = async (movie) => {
     const key = await getMovieTrailerKey(movie.id)
@@ -167,12 +208,37 @@ function App() {
         return [...prev, currentMovie]
       })
 
-      if (roomCode) {
+      if (roomCode && roomMode === 'couple') {
+        if (coupleSelections.length < 3) {
+          const cleanMovie = sanitizeMovie(currentMovie)
+          const updatedSelections = [...coupleSelections, cleanMovie]
+          setCoupleSelections(updatedSelections)
+
+          const userName = localStorage.getItem('swipemovie_userName') || 'İzleyici'
+          const userAvatar = localStorage.getItem('swipemovie_userAvatar') || '🍿'
+          const displayName = `${userAvatar} ${userName}`
+
+          const selectionDocRef = doc(db, 'rooms', roomCode, 'coupleSelections', userId)
+          setDoc(selectionDocRef, {
+            userId,
+            userName: displayName,
+            selections: updatedSelections,
+            updatedAt: new Date()
+          }).catch((err) => console.error('Çift modu veri kaydetme hatası:', err))
+
+          if (updatedSelections.length === 3) {
+            setShowCoupleModal(true)
+          }
+        }
+      } else if (roomCode) {
         const userName = localStorage.getItem('swipemovie_userName') || 'İzleyici'
+        const userAvatar = localStorage.getItem('swipemovie_userAvatar') || '🍿'
+        const displayName = `${userAvatar} ${userName}`
+
         const swipeDocRef = doc(db, 'rooms', roomCode, 'swipes', `${userId}_${currentMovie.id}`)
         setDoc(swipeDocRef, {
           userId,
-          userName,
+          userName: displayName,
           movieId: currentMovie.id,
           direction: 'right',
           movie: {
@@ -207,7 +273,7 @@ function App() {
   }
 
   const handleCopyLink = () => {
-    const url = getCleanRoomUrl(roomCode)
+    const url = getCleanRoomUrl(roomCode, roomMode)
     navigator.clipboard.writeText(url).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
@@ -217,6 +283,12 @@ function App() {
   if (screen === 'entry') {
     return (
       <RoomEntry
+        onJoinRoom={(code, mode) => {
+          setRoomCode(code)
+          if (mode) setRoomMode(mode)
+          setScreen('active')
+          setDoc(doc(db, 'rooms', code), { mode: mode || 'normal', createdAt: new Date() }, { merge: true })
+        }}
         onJoinSolo={() => {
           setRoomCode(null)
           setScreen('active')
@@ -229,6 +301,7 @@ function App() {
     return (
       <JoinRoomScreen
         roomCode={roomCode}
+        roomMode={roomMode}
         onJoin={() => setScreen('active')}
       />
     )
@@ -268,7 +341,13 @@ function App() {
           🎲 Çarkı Çevir
         </button>
 
-        {roomCode && (
+        {roomCode && roomMode === 'couple' && (
+          <button className="liked-counter couple-btn-chip" onClick={() => setShowCoupleModal(true)}>
+            👩‍❤️‍👨 Çift Modu ({coupleSelections.length}/3)
+          </button>
+        )}
+
+        {roomCode && roomMode !== 'couple' && (
           <button className="liked-counter compat-btn-chip" onClick={() => setShowCompat(true)}>
             🎯 Zevk Uyumu
           </button>
@@ -472,6 +551,15 @@ function App() {
         onClose={() => setShowWheel(false)}
         movies={likedMovies.length > 0 ? likedMovies : movies}
         onSelectWinner={(movie) => setSelectedMovie(movie)}
+      />
+
+      <CoupleModeModal
+        isOpen={showCoupleModal}
+        onClose={() => setShowCoupleModal(false)}
+        mySelections={coupleSelections}
+        partnerDoc={coupleDocs.find((d) => d.userId !== userId)}
+        winningData={roomMode === 'couple' ? getDeterministicWinningMovie(roomCode, coupleDocs) : null}
+        onPlayTrailer={handlePlayTrailer}
       />
     </div>
   )
