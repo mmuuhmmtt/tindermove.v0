@@ -8,6 +8,8 @@ import QuickMoods from './components/QuickMoods'
 import CompatibilityModal from './components/CompatibilityModal'
 import SpinWheelModal from './components/SpinWheelModal'
 import CoupleModeModal from './components/CoupleModeModal'
+import CoupleInfoModal from './components/CoupleInfoModal'
+import TournamentModal from './components/TournamentModal'
 import RoomEntry, { JoinRoomScreen } from './components/RoomEntry'
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -24,7 +26,9 @@ function App() {
   const [showFilters, setShowFilters] = useState(false)
   const [showCompat, setShowCompat] = useState(false)
   const [showWheel, setShowWheel] = useState(false)
+  const [showTournament, setShowTournament] = useState(false)
   const [showCoupleModal, setShowCoupleModal] = useState(false)
+  const [showCoupleInfo, setShowCoupleInfo] = useState(false)
   const [roomMode, setRoomMode] = useState('normal')
   const [coupleSelections, setCoupleSelections] = useState([])
   const [coupleDocs, setCoupleDocs] = useState([])
@@ -58,6 +62,7 @@ function App() {
     if (urlRoom) {
       setRoomCode(urlRoom)
       setScreen('joinPrompt')
+      setShowTopDrawer(true)
 
       const roomRef = doc(db, 'rooms', urlRoom)
       getDoc(roomRef).then((docSnap) => {
@@ -94,6 +99,13 @@ function App() {
 
     return () => unsubscribe()
   }, [roomCode, screen, roomMode, userId])
+
+  // Çift Modu aktif ekrana geçildiğinde bilgilendirme pop-up'ını doğrudan aç
+  useEffect(() => {
+    if (screen === 'active' && roomMode === 'couple') {
+      setShowCoupleInfo(true)
+    }
+  }, [screen, roomMode])
 
   const handlePlayTrailer = async (movie) => {
     const key = await getMovieTrailerKey(movie.id)
@@ -291,6 +303,9 @@ function App() {
           setRoomCode(code)
           if (mode) setRoomMode(mode)
           setScreen('active')
+          if (mode === 'couple') {
+            setShowCoupleInfo(true)
+          }
           setDoc(doc(db, 'rooms', code), { mode: mode || 'normal', createdAt: new Date() }, { merge: true })
         }}
         onJoinSolo={() => {
@@ -306,7 +321,12 @@ function App() {
       <JoinRoomScreen
         roomCode={roomCode}
         roomMode={roomMode}
-        onJoin={() => setScreen('active')}
+        onJoin={() => {
+          setScreen('active')
+          if (roomMode === 'couple') {
+            setShowCoupleInfo(true)
+          }
+        }}
       />
     )
   }
@@ -317,14 +337,13 @@ function App() {
         <h1 className="logo">🔥 SwipeMovie</h1>
       </div>
 
-      <QuickMoods
-        activeMood={activeMood}
-        onSelectMood={handleSelectMood}
-      />
+      <QuickMoods activeMood={activeMood} onSelectMood={handleSelectMood} />
 
       {roomCode && (
         <div className="room-badge">
-          <span>🏠 Oda Kodu: <strong>{roomCode}</strong></span>
+          <span>
+            🏠 Oda Kodu: <strong>{roomCode}</strong>
+          </span>
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
@@ -336,33 +355,46 @@ function App() {
         </div>
       )}
 
+      {/* Sabit Üst Butonlar (Çarkı Çevir & Turnuva Modu) */}
       <div className="top-buttons-row">
-        <button className="liked-counter" onClick={() => setShowLiked(!showLiked)}>
-          {showLiked ? '⬅ Geri Dön' : `❤️ Beğenilen: ${likedMovies.length}`}
-        </button>
+        {roomMode !== 'couple' && (
+          <button
+            className="liked-counter wheel-btn-chip"
+            onClick={() => setShowWheel(true)}
+          >
+            🎲 Çarkı Çevir
+          </button>
+        )}
 
-        <button className="liked-counter wheel-btn-chip" onClick={() => setShowWheel(true)}>
-          🎲 Çarkı Çevir
-        </button>
+        {roomMode !== 'couple' && (
+          <button
+            className="liked-counter tournament-btn-chip"
+            onClick={() => setShowTournament(true)}
+          >
+            🏆 Turnuva Modu
+          </button>
+        )}
 
         {roomCode && roomMode === 'couple' && (
-          <button className="liked-counter couple-btn-chip" onClick={() => setShowCoupleModal(true)}>
-            👩‍❤️‍👨 Çift Modu ({coupleSelections.length}/3)
+          <button
+            className="liked-counter couple-btn-chip"
+            onClick={() => setShowCoupleModal(true)}
+          >
+            👩‍❤️‍👨 Çift Modu Seçimlerin ({coupleSelections.length}/3)
           </button>
         )}
 
         {roomCode && roomMode !== 'couple' && (
-          <button className="liked-counter compat-btn-chip" onClick={() => setShowCompat(true)}>
+          <button
+            className="liked-counter compat-btn-chip"
+            onClick={() => setShowCompat(true)}
+          >
             🎯 Zevk Uyumu
           </button>
         )}
       </div>
 
-      {roomCode && matches.length > 0 && (
-        <div className="match-banner">
-          🎉 {matches.length} ortak eşleşme bulundu!
-        </div>
-      )}
+      {roomCode && matches.length > 0 && <div className="match-banner">🎉 {matches.length} ortak eşleşme bulundu!</div>}
 
       <AnimatePresence mode="wait">
         {showLiked ? (
@@ -372,35 +404,49 @@ function App() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -15 }}
             transition={{ duration: 0.2 }}
-            className="liked-grid"
+            className="liked-grid-wrapper"
           >
-            {likedMovies.length === 0 ? (
-              <p className="empty-liked-text">Henüz beğendiğin film yok.</p>
-            ) : (
-              likedMovies.map((movie) => (
-                <motion.div
-                  key={movie.id}
-                  className="liked-item"
-                  initial={{ scale: 0.85, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-                >
-                  <button
-                    className="remove-liked-btn"
-                    onClick={(e) => handleRemoveLiked(movie.id, e)}
-                    title="Beğenilerden Kaldır"
+            <div className="liked-header-bar">
+              <h3 className="liked-grid-title">❤️ Beğendiğin Filmler ({likedMovies.length})</h3>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="primary-button return-cards-btn"
+                onClick={() => setShowLiked(false)}
+              >
+                ⬅️ Kaydırmaya Dön
+              </motion.button>
+            </div>
+
+            <div className="liked-grid">
+              {likedMovies.length === 0 ? (
+                <p className="empty-liked-text">Henüz beğendiğin film yok. Sağa kaydırarak ekle! 🍿</p>
+              ) : (
+                likedMovies.map((movie) => (
+                  <motion.div
+                    key={movie.id}
+                    className="liked-item"
+                    initial={{ scale: 0.85, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 20 }}
                   >
-                    ✕
-                  </button>
-                  <img
-                    src={`https://image.tmdb.org/t/p/w200${movie.poster_path}`}
-                    alt={movie.title}
-                    className="liked-poster"
-                    onClick={() => setSelectedMovie(movie)}
-                  />
-                </motion.div>
-              ))
-            )}
+                    <button
+                      className="remove-liked-btn"
+                      onClick={(e) => handleRemoveLiked(movie.id, e)}
+                      title="Beğenilerden Kaldır"
+                    >
+                      ✕
+                    </button>
+                    <img
+                      src={`https://image.tmdb.org/t/p/w200${movie.poster_path}`}
+                      alt={movie.title}
+                      className="liked-poster"
+                      onClick={() => setSelectedMovie(movie)}
+                    />
+                  </motion.div>
+                ))
+              )}
+            </div>
           </motion.div>
         ) : (
           <motion.div
@@ -448,18 +494,20 @@ function App() {
             </div>
 
             <div className="tinder-action-buttons">
+              {/* Alttaki Geri Al Tusu Yerine Beğenilenler (Liked Movies) Butonu */}
               <motion.button
                 whileHover={{ scale: 1.15 }}
                 whileTap={{ scale: 0.85 }}
-                onClick={handleRewind}
-                className="tinder-btn rewind-btn"
-                title="Geri Al"
-                disabled={currentIndex === 0 || history.length === 0}
+                onClick={() => setShowLiked(!showLiked)}
+                className={`tinder-btn liked-list-btn ${showLiked ? 'active' : ''}`}
+                title={showLiked ? 'Kartlara Dön' : `Beğenilen Filmler (${likedMovies.length})`}
               >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-                  <path d="M3 3v5h5"/>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
                 </svg>
+                {likedMovies.length > 0 && (
+                  <span className="liked-count-badge">{likedMovies.length}</span>
+                )}
               </motion.button>
 
               <motion.button
@@ -483,7 +531,7 @@ function App() {
                 title="Beğen"
               >
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                  <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
                 </svg>
               </motion.button>
 
@@ -553,7 +601,8 @@ function App() {
       <SpinWheelModal
         isOpen={showWheel}
         onClose={() => setShowWheel(false)}
-        movies={likedMovies.length > 0 ? likedMovies : movies}
+        movies={movies}
+        likedMovies={likedMovies}
         onSelectWinner={(movie) => setSelectedMovie(movie)}
       />
 
@@ -563,6 +612,19 @@ function App() {
         mySelections={coupleSelections}
         partnerDoc={coupleDocs.find((d) => (d.userId || d.id) !== userId)}
         winningData={roomMode === 'couple' ? getDeterministicWinningMovie(roomCode, coupleDocs) : null}
+        onPlayTrailer={handlePlayTrailer}
+      />
+
+      <CoupleInfoModal
+        isOpen={showCoupleInfo}
+        onClose={() => setShowCoupleInfo(false)}
+      />
+
+      <TournamentModal
+        isOpen={showTournament}
+        onClose={() => setShowTournament(false)}
+        likedMovies={likedMovies}
+        popularMovies={movies}
         onPlayTrailer={handlePlayTrailer}
       />
     </div>

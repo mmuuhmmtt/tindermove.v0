@@ -49,8 +49,12 @@ function MovieCard({ movie, onSwipe, onCardClick, onPlayTrailer, isTop }) {
     >
       {isTop && (
         <>
-          <motion.div className="stamp like-stamp" style={{ opacity: likeOpacity, scale: likeScale }}>BEĞEN</motion.div>
-          <motion.div className="stamp nope-stamp" style={{ opacity: nopeOpacity, scale: nopeScale }}>GEÇ</motion.div>
+          <motion.div className="stamp like-stamp" style={{ opacity: likeOpacity, scale: likeScale }}>
+            BEĞEN
+          </motion.div>
+          <motion.div className="stamp nope-stamp" style={{ opacity: nopeOpacity, scale: nopeScale }}>
+            GEÇ
+          </motion.div>
         </>
       )}
 
@@ -63,10 +67,15 @@ function MovieCard({ movie, onSwipe, onCardClick, onPlayTrailer, isTop }) {
       <div className="card-gradient" />
 
       <div className="movie-info">
-        <div className="movie-header-row">
-          <h2>
-            {movie.title} <span className="year-tag">{year}</span>
-          </h2>
+        {/* Title constrained to max 2 lines */}
+        <h2 className="movie-card-title" title={movie.title}>
+          {movie.title}
+        </h2>
+
+        {/* Separate Meta Bar with Year + Action Buttons */}
+        <div className="movie-meta-bar">
+          {year && <span className="year-tag">{year}</span>}
+
           <div className="card-action-icons">
             {onPlayTrailer && (
               <button
@@ -88,14 +97,15 @@ function MovieCard({ movie, onSwipe, onCardClick, onPlayTrailer, isTop }) {
               }}
               title="Detaylar"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="12" y1="16" x2="12" y2="12"/>
-                <line x1="12" y1="8" x2="12.01" y2="8"/>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="16" x2="12" y2="12" />
+                <line x1="12" y1="8" x2="12.01" y2="8" />
               </svg>
             </button>
           </div>
         </div>
+
         <p className="card-overview">{movie.overview}</p>
       </div>
     </motion.div>

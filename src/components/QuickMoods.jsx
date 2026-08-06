@@ -11,23 +11,26 @@ const MOOD_PRESETS = [
 
 function QuickMoods({ activeMood, onSelectMood }) {
   return (
-    <div className="quick-moods-container">
-      <div className="quick-moods-scroll">
-        {MOOD_PRESETS.map((m) => {
-          const isActive = activeMood === m.id
-          return (
-            <motion.button
-              key={m.id}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className={`mood-chip ${isActive ? 'active' : ''}`}
-              onClick={() => onSelectMood(m.id, m.filters)}
-            >
-              {m.name}
-            </motion.button>
-          )
-        })}
+    <div className="quick-moods-wrapper">
+      <div className="quick-moods-container">
+        <div className="quick-moods-scroll">
+          {MOOD_PRESETS.map((m) => {
+            const isActive = activeMood === m.id
+            return (
+              <motion.button
+                key={m.id}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className={`mood-chip ${isActive ? 'active' : ''}`}
+                onClick={() => onSelectMood(m.id, m.filters)}
+              >
+                {m.name}
+              </motion.button>
+            )
+          })}
+        </div>
       </div>
+      <div className="scroll-fade-right" />
     </div>
   )
 }
