@@ -130,21 +130,24 @@ function SpinWheelModal({ isOpen, onClose, movies, likedMovies, onSelectWinner }
   const handleSpin = () => {
     if (spinning || items.length < 6) return
 
-    setIsSpinStarted(true) // "Çarkı Çevir"e basınca netleşip dönmeye başlar!
+    setIsSpinStarted(true)
     setSpinning(true)
     setWinner(null)
 
-    // Yumuşak başlangıç ivmelenmesi + sürükleyici yavaşlama (5.2 saniye)
+    // 5 tam tur + rastgele duruş açısı
     const randomDegree = 1800 + Math.floor(Math.random() * 360)
     const newRotation = rotation + randomDegree
     setRotation(newRotation)
 
+    // Çarktaki mevcut 6 film üzerinden duruş açısı ve kazanan indeksini tam eşleştir
+    const currentItems = [...items]
+    const degreesPerItem = 360 / currentItems.length
+    const normalizedDegree = (360 - (newRotation % 360)) % 360
+    const selectedIndex = Math.floor(normalizedDegree / degreesPerItem) % currentItems.length
+    const selectedMovie = currentItems[selectedIndex] || currentItems[0]
+
     setTimeout(() => {
       setSpinning(false)
-      const degreesPerItem = 360 / items.length
-      const normalizedDegree = (360 - (newRotation % 360)) % 360
-      const selectedIndex = Math.floor(normalizedDegree / degreesPerItem)
-      const selectedMovie = items[selectedIndex] || items[0]
       setWinner(selectedMovie)
     }, 5200)
   }
@@ -296,7 +299,7 @@ function SpinWheelModal({ isOpen, onClose, movies, likedMovies, onSelectWinner }
               ) : (
                 <button
                   className="secondary-button"
-                  onClick={() => initWheelData().then(handleSpin)}
+                  onClick={handleSpin}
                   disabled={spinning}
                   style={{ marginTop: '14px', fontSize: '13px', padding: '10px 22px', width: 'auto' }}
                 >
